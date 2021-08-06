@@ -287,6 +287,7 @@ public class MyPNGoo extends JFrame {
             "\"{}\" {} \"{}\" --ext {}",
             exePath, this.comboBox1.getSelectedItem(), file.getAbsolutePath(), extName
         ));
+
         List<String> rows;
         try (InputStream inputStream = process.getInputStream()) {
             rows = IOUtils.readLines(inputStream, "UTF-8");
@@ -294,6 +295,9 @@ public class MyPNGoo extends JFrame {
 
         // 等待执行完毕
         int exitCode = process.waitFor();
+        if (exitCode == 0) {
+            rows = Collections.singletonList("成功");
+        }
 
         String fileName = file.getName();
         File newFile = new File(file.getParentFile(), fileName.substring(0, fileName.length() - ".png".length()/*去掉后缀*/) + extName);
@@ -305,6 +309,7 @@ public class MyPNGoo extends JFrame {
         } else {
             // 保留原始文件
             FileUtils.deleteQuietly(newFile);
+            rows = Collections.singletonList("变大，放弃");
         }
 
         return new AbstractMap.SimpleEntry<>(exitCode, StringUtils.join(rows, "\n"));
@@ -325,10 +330,11 @@ public class MyPNGoo extends JFrame {
                             updateRow(rowIndex, "处理中..");
                             File file = entry.getValue();
                             Map.Entry<Integer, String> result = processOne(file);
+                            String resultMsg = result.getValue();
                             if (result.getKey() == 0) {
-                                updateRow(rowIndex, file.length(), "完成");
+                                updateRow(rowIndex, file.length(), resultMsg);
                             } else {
-                                updateRow(rowIndex, result.getValue());
+                                updateRow(rowIndex, resultMsg);
                             }
                         } catch (Exception e) {
                             e.printStackTrace();
@@ -373,7 +379,6 @@ public class MyPNGoo extends JFrame {
             this.table1.addNotify();
         }
     }
-
 
 
     private static void showError(String message, Throwable t) {
