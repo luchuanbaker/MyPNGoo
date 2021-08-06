@@ -6,7 +6,6 @@ import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.ArrayUtils;
 
 import javax.swing.*;
-import javax.swing.plaf.FontUIResource;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.JTableHeader;
 import javax.swing.table.TableColumn;
@@ -19,6 +18,8 @@ import java.awt.dnd.DnDConstants;
 import java.awt.dnd.DropTarget;
 import java.awt.dnd.DropTargetAdapter;
 import java.awt.dnd.DropTargetDropEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.*;
 import java.net.URL;
 import java.util.*;
@@ -70,9 +71,12 @@ public class MyPNGoo extends JFrame {
     private JButton btnGo;
     private JButton btnClear;
 
-    private String[] headers = {"文件", "路径", "原始大小", "压缩后大小", "状态"};
+    private static final String STATUS_COLUMN = "状态";
+
+    private static final List<String> HEADER_LIST = Arrays.asList("文件", "路径", "原始大小", "压缩后大小", STATUS_COLUMN);
 
     private static final Font FONT20 = new Font("微软雅黑", Font.BOLD, 20);
+    private static final Font FONT14 = new Font("微软雅黑", Font.PLAIN, 17);
 
     public static void main(String[] args) {
         if (t != null) {
@@ -94,6 +98,10 @@ public class MyPNGoo extends JFrame {
         return Arrays.asList(this.btnRemove, this.btnClear, this.btnAdd, this.btnGo);
     }
 
+    private int getStatusColumnIndex() {
+        return HEADER_LIST.indexOf(STATUS_COLUMN);
+    }
+
     @SuppressWarnings("unchecked")
     public MyPNGoo(String name) {
         super(name);
@@ -108,9 +116,12 @@ public class MyPNGoo extends JFrame {
         this.comboBox1.setSelectedIndex(this.comboBox1.getItemCount() - 2);
 
         // 全局字体样式，仅仅对一些组件有效，比如JOptionPane
-        initGlobalFontSetting(FONT20);
+        // initGlobalFontSetting(FONT20);
+        // 修改JOptionPane的字体样式
+        UIManager.put("OptionPane.buttonFont", FONT20);
+        UIManager.put("OptionPane.messageFont", FONT14);
 
-        this.tableModel = new DefaultTableModel(null, headers) {
+        this.tableModel = new DefaultTableModel(null, HEADER_LIST.toArray(new String[0])) {
             @Override
             public boolean isCellEditable(int row, int column) {
                 return false;
@@ -192,6 +203,15 @@ public class MyPNGoo extends JFrame {
                 doProcess(files);
             }
         });
+        table1.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                int statusColumnIndex = getStatusColumnIndex();
+                if (table1.getSelectedColumn() == statusColumnIndex) {
+                    JOptionPane.showMessageDialog(null, table1.getValueAt(table1.getSelectedRow(), statusColumnIndex));
+                }
+            }
+        });
     }
 
     private static String formatSize(Long size) {
@@ -207,16 +227,16 @@ public class MyPNGoo extends JFrame {
         }
     }
 
-    public static void initGlobalFontSetting(Font fnt) {
-        FontUIResource fontRes = new FontUIResource(fnt);
-        for (Enumeration keys = UIManager.getDefaults().keys(); keys.hasMoreElements(); ) {
-            Object key = keys.nextElement();
-            Object value = UIManager.get(key);
-            if (value instanceof FontUIResource) {
-                UIManager.put(key, fontRes);
-            }
-        }
-    }
+//    public static void initGlobalFontSetting(Font fnt) {
+//        FontUIResource fontRes = new FontUIResource(fnt);
+//        for (Enumeration keys = UIManager.getDefaults().keys(); keys.hasMoreElements(); ) {
+//            Object key = keys.nextElement();
+//            Object value = UIManager.get(key);
+//            if (value instanceof FontUIResource) {
+//                UIManager.put(key, fontRes);
+//            }
+//        }
+//    }
 
     private void addRow(Object[] row) {
         this.dataVector1.add(toRow(row));
@@ -260,7 +280,7 @@ public class MyPNGoo extends JFrame {
         for (Object o : anArray) {
             v.addElement(o);
         }
-        for (int i = 0; i < this.headers.length - anArray.length; i++) {
+        for (int i = 0; i < HEADER_LIST.size() - anArray.length; i++) {
             v.addElement(null);
         }
         return v;
@@ -282,11 +302,26 @@ public class MyPNGoo extends JFrame {
     private Map.Entry<Integer, String> processOne(File file) throws IOException, InterruptedException {
         // pngquanti.exe 64 "D:\Program Files (x86)\压图PNGoo\libs\pngquanti\my-test.png" --ext .png --force --speed 3
         String extName = ".mypngoo.png";
-        Process process = Runtime.getRuntime().exec(StringUtils.format(
+
+        Object selectedItem = this.comboBox1.getSelectedItem();
+
+        if (selectedItem == null) {
+            throw new IllegalArgumentException("请先选择Color");
+        }
+
+        String cmd = StringUtils.format(
             // --ext .png -- force 用于覆盖原始文件
             "\"{}\" {} \"{}\" --ext {} --force",
-            exePath, this.comboBox1.getSelectedItem(), file.getAbsolutePath(), extName
-        ));
+            exePath, selectedItem, file.getAbsolutePath(), extName
+        );
+
+
+
+        ProcessBuilder processBuilder = new ProcessBuilder(
+            exePath, selectedItem.toString(), file.getAbsolutePath(),
+            "--ext", extName, "--force"
+        ).redirectErrorStream(true);
+        Process process = processBuilder.start();
 
         List<String> rows;
         try (InputStream inputStream = process.getInputStream()) {
@@ -297,19 +332,21 @@ public class MyPNGoo extends JFrame {
         int exitCode = process.waitFor();
         if (exitCode == 0) {
             rows = Collections.singletonList("成功");
-        }
 
-        String fileName = file.getName();
-        File newFile = new File(file.getParentFile(), fileName.substring(0, fileName.length() - ".png".length()/*去掉后缀*/) + extName);
-        // 比较文件大小，只有比原始文件小才保留
-        if (FileUtils.sizeOf(newFile) < FileUtils.sizeOf(file)) {
-            // 删除原始文件，移动为新文件
-            FileUtils.deleteQuietly(file);
-            FileUtils.moveFile(newFile, file);
-        } else {
-            // 保留原始文件
-            FileUtils.deleteQuietly(newFile);
-            rows = Collections.singletonList("变大，放弃");
+            String fileName = file.getName();
+            File newFile = new File(file.getParentFile(), fileName.substring(0, fileName.length() - ".png".length()/*去掉后缀*/) + extName);
+            // 比较文件大小，只有比原始文件小才保留
+            long newSize = FileUtils.sizeOf(newFile);
+            long oldSize = FileUtils.sizeOf(file);
+            if (newSize < oldSize) {
+                // 删除原始文件，移动为新文件
+                FileUtils.deleteQuietly(file);
+                FileUtils.moveFile(newFile, file);
+            } else {
+                // 保留原始文件
+                FileUtils.deleteQuietly(newFile);
+                rows = Collections.singletonList(newSize > oldSize ? "变大，放弃" : "不变，保留原图");
+            }
         }
 
         return new AbstractMap.SimpleEntry<>(exitCode, StringUtils.join(rows, "\n"));
@@ -375,7 +412,7 @@ public class MyPNGoo extends JFrame {
             // 第三列是压缩后大小
             row.set(3, formatSize(newSize));
             // 状态
-            row.set(headers.length - 1, msg);
+            row.set(this.getStatusColumnIndex(), msg);
             this.table1.addNotify();
         }
     }
