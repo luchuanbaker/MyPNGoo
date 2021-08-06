@@ -284,7 +284,7 @@ public class MyPNGoo extends JFrame {
         String extName = ".mypngoo.png";
         Process process = Runtime.getRuntime().exec(StringUtils.format(
             // --ext .png -- force 用于覆盖原始文件
-            "\"{}\" {} \"{}\" --ext {}",
+            "\"{}\" {} \"{}\" --ext {} --force",
             exePath, this.comboBox1.getSelectedItem(), file.getAbsolutePath(), extName
         ));
 
